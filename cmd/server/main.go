@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"fearlessdraft-server/cmd/server/middleware"
 	"fearlessdraft-server/internal/handler"
 	"fearlessdraft-server/internal/service"
 	"fearlessdraft-server/pkg/types"
@@ -13,29 +14,34 @@ import (
 
 func main() {
 
-	handleChampionRates()
-	handleLobby()
+	mux := http.NewServeMux()
+
+	handleChampionRates(mux)
+	handleLobby(mux)
 
 	fmt.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	handlerMiddleware := middleware.CorsMiddleware(mux)
+	log.Fatal(http.ListenAndServe(":8080", handlerMiddleware))
 }
 
-func handleChampionRates() {
+func handleChampionRates(mux *http.ServeMux) {
 	dataURL := "https://cdn.merakianalytics.com/riot/lol/resources/latest/en-US/championrates.json"
 
 	championRatesService := service.NewChampionRatesService(dataURL)
 
 	championRatesHandler := handler.NewChampionRatesHandler(championRatesService)
 
-	http.HandleFunc("/proxy/championrates", championRatesHandler.HandleChampionRates)
+	mux.HandleFunc("/proxy/championrates", championRatesHandler.HandleChampionRates)
 }
 
-func handleLobby() {
+func handleLobby(mux *http.ServeMux) {
 	lobbyService := service.NewLobbyService()
 
 	lobbyHandler := handler.NewLobbyHandler(lobbyService)
 
-	http.HandleFunc("/api/lobby/create", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/lobby/create", func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		var lobbyRequest struct {
 			BlueTeamName string              `json:"blueTeamName"`
@@ -49,7 +55,6 @@ func handleLobby() {
 			return
 		}
 
-		// Now you can access the parsed data
 		lobbyResponse := lobbyService.CreateLobby(
 			lobbyRequest.Options,
 			lobbyRequest.BlueTeamName,
@@ -59,5 +64,5 @@ func handleLobby() {
 		json.NewEncoder(w).Encode(lobbyResponse)
 	})
 
-	http.HandleFunc("/ws/lobby/", lobbyHandler.HandleLobbyWebSocket)
+	mux.HandleFunc("/ws/lobby/", lobbyHandler.HandleLobbyWebSocket)
 }
