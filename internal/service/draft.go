@@ -14,7 +14,8 @@ type DraftService struct {
 
 func NewDraftService(initialDraftState *types.DraftState) *DraftService {
 	service := &DraftService{
-		draftState: initialDraftState,
+		draftState:  initialDraftState,
+		turnCounter: 1,
 	}
 
 	return service
@@ -29,7 +30,10 @@ func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
 	case types.Start:
 		return ds.handleStartEvent(event)
 	case types.Hover:
-		return ds.handleHoverEvent(event)
+		if ds.draftState.Phase == types.PhasePick {
+			return ds.handleHoverEvent(event)
+		}
+		return false, nil
 	case types.Select:
 		return ds.handleSelectEvent(event)
 	case types.Timeout:
@@ -60,11 +64,7 @@ func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
 		ds.draftState.Phase = types.PhaseRestart
 	case types.PhaseRestart:
 		if ds.draftState.Game < 5 {
-			switchSide, ok := event.Payload.(bool)
-			if !ok {
-				return false, fmt.Errorf("invalid payload for start event")
-			}
-			ds.handleRestart(switchSide)
+			ds.handleRestart(event.Flag)
 		}
 	}
 
@@ -128,30 +128,18 @@ func (ds *DraftService) extractPreviousBans(bans []*string) []string {
 }
 
 func (ds *DraftService) handleHoverEvent(event *types.Event) (bool, error) {
-	payload, ok := event.Payload.(types.Payload)
-	if !ok {
-		return false, fmt.Errorf("invalid payload for hover event")
-	}
 
 	teamKey := ds.determineTeamKey(event.User)
 
-	hoverChampion := &types.DraftChampion{
-		ID:     payload.ID,
-		Name:   payload.Name,
-		Roles:  payload.Role,
-		Status: types.ChampStatusHover,
-	}
-
 	team := ds.getTeamState(teamKey)
 
-	updated := ds.updateChampionArray(team.Picks, hoverChampion,
-		func(item *types.DraftChampion) bool {
-			return item != nil && item.Status == types.ChampStatusHover
-		}) ||
-		ds.updateChampionArray(team.Picks, hoverChampion,
-			func(item *types.DraftChampion) bool {
-				return item == nil
-			})
+	hoverChampion := &types.DraftChampion{
+		ID:     event.Payload.ID,
+		Name:   event.Payload.Name,
+		Roles:  event.Payload.Role,
+		Status: types.ChampStatusHover,
+	}
+	updated := ds.updateChampionArray(team.Picks, hoverChampion)
 
 	if !updated {
 		log.Println("Unable to hover the champion")
@@ -161,10 +149,6 @@ func (ds *DraftService) handleHoverEvent(event *types.Event) (bool, error) {
 }
 
 func (ds *DraftService) handleSelectEvent(event *types.Event) (bool, error) {
-	payload, ok := event.Payload.(types.Payload)
-	if !ok {
-		return false, fmt.Errorf("invalid payload for select event")
-	}
 
 	teamKey := ds.determineTeamKey(event.User)
 	team := ds.getTeamState(teamKey)
@@ -173,22 +157,16 @@ func (ds *DraftService) handleSelectEvent(event *types.Event) (bool, error) {
 
 	var updated bool
 	if isBanPhase {
-		updated = ds.updateStringArray(team.Bans, payload.ID,
-			func(item string) bool {
-				return item == ""
-			})
+		updated = ds.updateStringArray(team.Bans, &event.Payload.ID)
 	} else {
 		selectedChampion := &types.DraftChampion{
-			ID:     payload.ID,
-			Name:   payload.Name,
-			Roles:  payload.Role,
+			ID:     event.Payload.ID,
+			Name:   event.Payload.Name,
+			Roles:  event.Payload.Role,
 			Status: types.ChampStatusSelected,
 		}
 
-		updated = ds.updateChampionArray(team.Picks, selectedChampion,
-			func(item *types.DraftChampion) bool {
-				return item != nil && item.Status == types.ChampStatusHover
-			})
+		updated = ds.updateChampionArray(team.Picks, selectedChampion)
 	}
 
 	if !updated {
@@ -215,20 +193,28 @@ func (ds *DraftService) getTeamState(teamKey string) *types.TeamState {
 	return &ds.draftState.RedTeam
 }
 
-func (ds *DraftService) updateChampionArray(arr []*types.DraftChampion, value *types.DraftChampion, condition func(*types.DraftChampion) bool) bool {
+func (ds *DraftService) updateChampionArray(arr []*types.DraftChampion, value *types.DraftChampion) bool {
 	for i := range arr {
-		if condition(arr[i]) {
+		if arr[i] != nil && arr[i].Status == types.ChampStatusHover {
 			arr[i] = value
 			return true
 		}
 	}
+
+	for i := range arr {
+		if arr[i] == nil {
+			arr[i] = value
+			return true
+		}
+	}
+
 	return false
 }
 
-func (ds *DraftService) updateStringArray(arr []*string, value string, condition func(string) bool) bool {
+func (ds *DraftService) updateStringArray(arr []*string, value *string) bool {
 	for i := range arr {
-		if condition(*arr[i]) {
-			*arr[i] = value
+		if arr[i] == nil {
+			arr[i] = value
 			return true
 		}
 	}
@@ -273,14 +259,17 @@ func (ds *DraftService) determinePhase(turnCounter int) types.DraftPhase {
 
 func (ds *DraftService) getStandardTurn(turnCounter int) types.DraftTurn {
 	switch turnCounter {
+	//bans
 	case 1, 3, 5, 7, 9:
 		return types.TurnBlue
 	case 2, 4, 6, 8, 10:
 		return types.TurnRed
-	case 11, 14, 18, 19:
+		//picks
+	case 11, 14, 15, 18, 19:
 		return types.TurnBlue
 	case 12, 13, 16, 17, 20:
 		return types.TurnRed
+		//end
 	case 21:
 		return types.TurnEnd
 	default:
@@ -290,22 +279,27 @@ func (ds *DraftService) getStandardTurn(turnCounter int) types.DraftTurn {
 
 func (ds *DraftService) getTurn(turnCounter int) types.DraftTurn {
 	switch turnCounter {
+	//bans
 	case 1, 3, 5:
 		return types.TurnBlue
 	case 2, 4, 6:
 		return types.TurnRed
+		//picks
 	case 7, 10, 11:
 		return types.TurnBlue
 	case 8, 9, 12:
 		return types.TurnRed
+		//bans
 	case 13, 15:
 		return types.TurnRed
 	case 14, 16:
 		return types.TurnBlue
-	case 17, 19:
+		//picks
+	case 17, 20:
 		return types.TurnRed
-	case 18, 20:
+	case 18, 19:
 		return types.TurnBlue
+		//end
 	case 21:
 		return types.TurnEnd
 	default:

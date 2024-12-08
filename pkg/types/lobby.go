@@ -97,9 +97,10 @@ const (
 )
 
 type Event struct {
-	User    DraftTurn   `json:"user"`
-	Type    EventType   `json:"type"`
-	Payload interface{} `json:"payload"`
+	User    DraftTurn `json:"user"`
+	Type    EventType `json:"type"`
+	Payload Payload   `json:"payload"`
+	Flag    bool      `json:"flag"`
 }
 
 type ChampionStatus string
