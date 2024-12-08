@@ -33,7 +33,7 @@ func (s *LobbyService) CreateLobby(options *types.DraftOptions, blueTeamName str
 
 	s.lobbies[lobby.ID] = lobby
 
-	baseURL := "/ws/lobby"
+	baseURL := "/draft"
 	return &LobbyCreateResponse{
 		LobbyID:      lobby.ID,
 		BlueTeamURL:  fmt.Sprintf("%s/%s/blue", baseURL, lobby.ID),

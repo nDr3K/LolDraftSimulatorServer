@@ -30,13 +30,13 @@ func NewLobbyHandler(ls *service.LobbyService) *LobbyHandler {
 
 func (h *LobbyHandler) HandleLobbyWebSocket(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
+	if len(parts) < 5 {
 		http.Error(w, "Invalid lobby URL", http.StatusBadRequest)
 		return
 	}
 
-	lobbyID := parts[2]
-	roleStr := parts[3]
+	lobbyID := parts[3]
+	roleStr := parts[4]
 
 	lobby, exists := h.lobbyService.GetLobby(lobbyID)
 	if !exists {
