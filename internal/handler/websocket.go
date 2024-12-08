@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -72,6 +73,8 @@ func (h *LobbyHandler) HandleLobbyWebSocket(w http.ResponseWriter, r *http.Reque
 
 	lobby.AddUser(User)
 
+	h.sendDraftState(lobby, User)
+
 	h.handleUserConnection(lobby, User)
 }
 
@@ -88,14 +91,44 @@ func (h *LobbyHandler) handleUserConnection(lobby *types.Lobby, User *types.User
 }
 
 func (h *LobbyHandler) processMessage(lobby *types.Lobby, User *types.User, message []byte) {
-	// Implement role-based message processing
-	switch User.Role {
-	case types.RoleBlueTeam:
-		// Blue team specific actions
-	case types.RoleRedTeam:
-		// Red team specific actions
-	case types.RoleSpectator:
-		// Spectator can only receive updates
+
+	var event types.Event
+	if err := json.Unmarshal(message, &event); err != nil {
+		log.Printf("Error unmarshaling message: %v", err)
+		return
+	}
+
+	if (User.Role == types.RoleBlueTeam && event.User != types.TurnBlue) ||
+		(User.Role == types.RoleRedTeam && event.User != types.TurnRed) {
+		log.Println("Not your turn")
+		return
+	}
+
+	if lobby.DraftService == nil {
+		lobby.DraftService = service.NewDraftService(&lobby.DraftState)
+	}
+
+	success, err := lobby.DraftService.HandleEvent(&event)
+	if err != nil {
+		log.Printf("Error processing draft event: %v", err)
+	}
+	if success {
+		h.sendDraftState(lobby, User)
+	}
+}
+
+func (h *LobbyHandler) sendDraftState(lobby *types.Lobby, User *types.User) {
+	draftStateJSON, err := json.Marshal(lobby.DraftState)
+	if err != nil {
+		log.Printf("Error marshaling draft state: %v", err)
+		return
+	}
+
+	err = User.Conn.WriteMessage(websocket.TextMessage, draftStateJSON)
+	if err != nil {
+		log.Printf("Error sending draft state to user %s: %v", User.ID, err)
+		lobby.RemoveUser(User.ID)
+		return
 	}
 }
 

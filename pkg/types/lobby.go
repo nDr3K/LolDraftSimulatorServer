@@ -36,7 +36,7 @@ type DraftChampion struct {
 type TeamState struct {
 	Name          string           `json:"name"`
 	Picks         []*DraftChampion `json:"picks"`
-	Bans          []string         `json:"bans"`
+	Bans          []*string        `json:"bans"`
 	PreviousPicks []string         `json:"previousPicks"`
 	PreviousBans  []string         `json:"previousBans"`
 }
@@ -125,13 +125,14 @@ type User struct {
 }
 
 type Lobby struct {
-	ID         string
-	Users      map[string]*User
-	BlueTeam   map[string]*User
-	RedTeam    map[string]*User
-	Spectators map[string]*User
-	Mutex      sync.RWMutex
-	DraftState DraftState
+	ID           string
+	Users        map[string]*User
+	BlueTeam     map[string]*User
+	RedTeam      map[string]*User
+	Spectators   map[string]*User
+	Mutex        sync.RWMutex
+	DraftState   DraftState
+	DraftService DraftServiceInterface
 }
 
 func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lobby {
@@ -150,14 +151,14 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lo
 			BlueTeam: TeamState{
 				Name:          blueTeamName,
 				Picks:         make([]*DraftChampion, 5),
-				Bans:          make([]string, 5),
+				Bans:          make([]*string, 5),
 				PreviousPicks: []string{},
 				PreviousBans:  []string{},
 			},
 			RedTeam: TeamState{
 				Name:          redTeamName,
 				Picks:         make([]*DraftChampion, 5),
-				Bans:          make([]string, 5),
+				Bans:          make([]*string, 5),
 				PreviousPicks: []string{},
 				PreviousBans:  []string{},
 			},
