@@ -7,7 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Role represents the possible champion roles
 type Role string
 
 const (
@@ -18,7 +17,6 @@ const (
 	RoleSupport Role = "support"
 )
 
-// DraftChampionStatus represents the status of a champion in draft
 type DraftChampionStatus string
 
 const (
@@ -28,7 +26,6 @@ const (
 	ChampStatusDisabled DraftChampionStatus = "disabled"
 )
 
-// DraftChampion represents a champion in the draft
 type DraftChampion struct {
 	ID     string              `json:"id"`
 	Name   string              `json:"name"`
@@ -36,7 +33,6 @@ type DraftChampion struct {
 	Status DraftChampionStatus `json:"status"`
 }
 
-// TeamState represents the state of a team in the draft
 type TeamState struct {
 	Name          string           `json:"name"`
 	Picks         []*DraftChampion `json:"picks"`
@@ -45,7 +41,6 @@ type TeamState struct {
 	PreviousBans  []string         `json:"previousBans"`
 }
 
-// DraftPhase represents the current phase of the draft
 type DraftPhase string
 
 const (
@@ -56,7 +51,6 @@ const (
 	PhaseRestart DraftPhase = "restart"
 )
 
-// DraftTurn represents whose turn it is in the draft
 type DraftTurn string
 
 const (
@@ -65,7 +59,6 @@ const (
 	TurnEnd  DraftTurn = "end"
 )
 
-// DraftOptions represents the configurable options for the draft
 type DraftOptions struct {
 	IsFearless    bool `json:"isFearless"`
 	BanPick       bool `json:"banPick"`
@@ -73,7 +66,6 @@ type DraftOptions struct {
 	TournamentBan bool `json:"tournamentBan"`
 }
 
-// DraftState represents the complete state of the draft
 type DraftState struct {
 	HasTimer bool         `json:"hasTimer"`
 	Phase    DraftPhase   `json:"phase"`
@@ -92,6 +84,38 @@ const (
 	RoleRedTeam   LobbyRole = "red"
 	RoleSpectator LobbyRole = "spectator"
 )
+
+type EventType string
+
+const (
+	Select  EventType = "SELECT"
+	Hover   EventType = "HOVER"
+	Message EventType = "MESSAGE"
+	Start   EventType = "START"
+	Timeout EventType = "TIMEOUT"
+)
+
+type Event struct {
+	User    DraftTurn   `json:"user"`
+	Type    EventType   `json:"type"`
+	Payload interface{} `json:"payload"`
+}
+
+type ChampionStatus string
+
+const (
+	Hovered  ChampionStatus = "hover"
+	Selected ChampionStatus = "selected"
+	None     ChampionStatus = "none"
+	Disabled ChampionStatus = "disabled"
+)
+
+type Payload struct {
+	ID     string         `json:"id"`
+	Name   string         `json:"name"`
+	Role   []Role         `json:"role"`
+	Status ChampionStatus `json:"status"`
+}
 
 type User struct {
 	ID       string
@@ -126,24 +150,20 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lo
 			BlueTeam: TeamState{
 				Name:          blueTeamName,
 				Picks:         make([]*DraftChampion, 5),
-				Bans:          make([]string, 3),
+				Bans:          make([]string, 5),
 				PreviousPicks: []string{},
 				PreviousBans:  []string{},
 			},
 			RedTeam: TeamState{
 				Name:          redTeamName,
 				Picks:         make([]*DraftChampion, 5),
-				Bans:          make([]string, 3),
+				Bans:          make([]string, 5),
 				PreviousPicks: []string{},
 				PreviousBans:  []string{},
 			},
 			Options: options,
 		},
 	}
-}
-
-func generateLobbyID() string {
-	return uuid.New().String()
 }
 
 func (l *Lobby) AddUser(User *User) {
