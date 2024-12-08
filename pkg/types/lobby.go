@@ -54,9 +54,10 @@ const (
 type DraftTurn string
 
 const (
-	TurnBlue DraftTurn = "blue"
-	TurnRed  DraftTurn = "red"
-	TurnEnd  DraftTurn = "end"
+	TurnBlue  DraftTurn = "blue"
+	TurnRed   DraftTurn = "red"
+	TurnStart DraftTurn = "start"
+	TurnEnd   DraftTurn = "end"
 )
 
 type DraftOptions struct {
@@ -145,7 +146,7 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lo
 		DraftState: DraftState{
 			HasTimer: true,
 			Phase:    PhaseReady,
-			Turn:     TurnBlue,
+			Turn:     TurnStart,
 			Game:     1,
 			Chat:     []string{},
 			BlueTeam: TeamState{

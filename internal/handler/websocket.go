@@ -73,7 +73,16 @@ func (h *LobbyHandler) HandleLobbyWebSocket(w http.ResponseWriter, r *http.Reque
 
 	lobby.AddUser(User)
 
-	h.sendDraftState(lobby, User)
+	draftStateJSON, err := json.Marshal(lobby.DraftState)
+	if err != nil {
+		log.Printf("Error marshaling draft state: %v", err)
+		return
+	}
+	err = User.Conn.WriteMessage(websocket.TextMessage, draftStateJSON)
+	if err != nil {
+		log.Printf("Error sending draft state to user %s: %v", User.ID, err)
+		lobby.RemoveUser(User.ID)
+	}
 
 	h.handleUserConnection(lobby, User)
 }
@@ -113,22 +122,23 @@ func (h *LobbyHandler) processMessage(lobby *types.Lobby, User *types.User, mess
 		log.Printf("Error processing draft event: %v", err)
 	}
 	if success {
-		h.sendDraftState(lobby, User)
+		h.sendDraftState(lobby)
 	}
 }
 
-func (h *LobbyHandler) sendDraftState(lobby *types.Lobby, User *types.User) {
+func (h *LobbyHandler) sendDraftState(lobby *types.Lobby) {
 	draftStateJSON, err := json.Marshal(lobby.DraftState)
 	if err != nil {
 		log.Printf("Error marshaling draft state: %v", err)
 		return
 	}
+	for _, user := range lobby.Users {
+		err = user.Conn.WriteMessage(websocket.TextMessage, draftStateJSON)
+		if err != nil {
+			log.Printf("Error sending draft state to user %s: %v", user.ID, err)
+			lobby.RemoveUser(user.ID)
 
-	err = User.Conn.WriteMessage(websocket.TextMessage, draftStateJSON)
-	if err != nil {
-		log.Printf("Error sending draft state to user %s: %v", User.ID, err)
-		lobby.RemoveUser(User.ID)
-		return
+		}
 	}
 }
 

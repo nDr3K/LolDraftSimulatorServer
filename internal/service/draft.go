@@ -21,6 +21,10 @@ func NewDraftService(initialDraftState *types.DraftState) *DraftService {
 }
 
 func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
+	if ds.draftState.Turn != event.User && ds.draftState.Turn != types.TurnStart {
+		return false, nil
+	}
+
 	switch event.Type {
 	case types.Start:
 		return ds.handleStartEvent(event)
@@ -41,6 +45,17 @@ func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
 
 func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
 	switch ds.draftState.Phase {
+	case types.PhaseReady:
+		if ds.draftState.Turn == types.TurnStart {
+			if event.User == types.TurnBlue {
+				ds.draftState.Turn = types.TurnRed
+			} else if event.User == types.TurnRed {
+				ds.draftState.Turn = types.TurnBlue
+			}
+		} else {
+			ds.draftState.Turn = types.TurnBlue
+			ds.draftState.Phase = types.PhaseBan
+		}
 	case types.PhaseEnd:
 		ds.draftState.Phase = types.PhaseRestart
 	case types.PhaseRestart:
