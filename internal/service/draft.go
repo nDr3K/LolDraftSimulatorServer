@@ -22,7 +22,7 @@ func NewDraftService(initialDraftState *types.DraftState) *DraftService {
 }
 
 func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
-	if ds.draftState.Turn != event.User && ds.draftState.Turn != types.TurnStart {
+	if ds.draftState.Turn != event.User && ds.draftState.Turn != types.TurnStart && ds.draftState.Turn != types.TurnEnd {
 		return false, nil
 	}
 
@@ -50,18 +50,21 @@ func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
 func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
 	switch ds.draftState.Phase {
 	case types.PhaseReady:
-		if ds.draftState.Turn == types.TurnStart {
-			if event.User == types.TurnBlue {
-				ds.draftState.Turn = types.TurnRed
-			} else if event.User == types.TurnRed {
-				ds.draftState.Turn = types.TurnBlue
-			}
-		} else {
+		ds.handleWaitingConfirm(event, types.TurnStart, func() {
 			ds.draftState.Turn = types.TurnBlue
 			ds.draftState.Phase = types.PhaseBan
-		}
+		})
 	case types.PhaseEnd:
-		ds.draftState.Phase = types.PhaseRestart
+		if event.User == types.TurnBlue {
+			ds.draftState.Turn = types.TurnRed
+		} else if event.User == types.TurnRed {
+			ds.draftState.Turn = types.TurnBlue
+		}
+		if ds.draftState.Game < 5 {
+			ds.draftState.Phase = types.PhaseRestart
+		} else {
+			ds.draftState.Phase = types.PhaseOver
+		}
 	case types.PhaseRestart:
 		if ds.draftState.Game < 5 {
 			ds.handleRestart(event.Flag)
@@ -69,6 +72,18 @@ func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (ds *DraftService) handleWaitingConfirm(event *types.Event, turn types.DraftTurn, action func()) {
+	if ds.draftState.Turn == turn {
+		if event.User == types.TurnBlue {
+			ds.draftState.Turn = types.TurnRed
+		} else if event.User == types.TurnRed {
+			ds.draftState.Turn = types.TurnBlue
+		}
+	} else {
+		action()
+	}
 }
 
 func (ds *DraftService) handleRestart(switchSide bool) {
@@ -96,9 +111,9 @@ func (ds *DraftService) handleRestart(switchSide bool) {
 	redSide.Bans = make([]*string, 5)
 
 	ds.turnCounter = 1
-	ds.draftState.Phase = types.PhaseBan
+	ds.draftState.Phase = types.PhaseReady
 	ds.draftState.Game++
-	ds.draftState.Turn = types.TurnBlue
+	ds.draftState.Turn = types.TurnStart
 	ds.draftState.BlueTeam = blueSide
 	ds.draftState.RedTeam = redSide
 }

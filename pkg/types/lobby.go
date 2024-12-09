@@ -49,6 +49,7 @@ const (
 	PhasePick    DraftPhase = "pick"
 	PhaseEnd     DraftPhase = "end"
 	PhaseRestart DraftPhase = "restart"
+	PhaseOver    DraftPhase = "over"
 )
 
 type DraftTurn string
