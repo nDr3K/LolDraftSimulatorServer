@@ -1,6 +1,5 @@
 package types
 
 type DraftServiceInterface interface {
-	HandleEvent(event *Event) (bool, error)
-	Disconnect()
+	HandleEvent(event *Event, sendStateFunc func(*Lobby)) (bool, error)
 }

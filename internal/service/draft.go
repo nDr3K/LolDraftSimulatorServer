@@ -3,41 +3,105 @@ package service
 import (
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"fearlessdraft-server/pkg/types"
 )
 
 type DraftService struct {
-	draftState  *types.DraftState
-	turnCounter int
+	lobby        *types.Lobby
+	turnCounter  int
+	timerMutex   sync.Mutex
+	timerStopper chan struct{}
 }
 
-func NewDraftService(initialDraftState *types.DraftState) *DraftService {
+func NewDraftService(lobby *types.Lobby) *DraftService {
 	service := &DraftService{
-		draftState:  initialDraftState,
+		lobby:       lobby,
 		turnCounter: 1,
 	}
 
 	return service
 }
 
-func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
-	if ds.draftState.Turn != event.User && ds.draftState.Turn != types.TurnStart && ds.draftState.Turn != types.TurnEnd {
+func (ds *DraftService) StartTimer(sendStateFunc func(*types.Lobby)) {
+	ds.timerMutex.Lock()
+	defer ds.timerMutex.Unlock()
+
+	if ds.timerStopper != nil {
+		close(ds.timerStopper)
+	}
+
+	if !ds.lobby.DraftState.HasTimer || ds.lobby.DraftState.Timer <= 0 {
+		return
+	}
+
+	ds.timerStopper = make(chan struct{})
+	stopper := ds.timerStopper
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				ds.timerMutex.Lock()
+				if ds.lobby.DraftState.Timer > 0 {
+					ds.lobby.DraftState.Timer--
+					sendStateFunc(ds.lobby)
+				}
+
+				// Stop timer if it reaches 0
+				if ds.lobby.DraftState.Timer <= 0 {
+					ds.timerMutex.Unlock()
+					return
+				}
+				ds.timerMutex.Unlock()
+
+			case <-stopper:
+				return
+			}
+		}
+	}()
+}
+
+func (ds *DraftService) StopTimer() {
+	ds.timerMutex.Lock()
+	defer ds.timerMutex.Unlock()
+
+	if ds.timerStopper != nil {
+		close(ds.timerStopper)
+		ds.timerStopper = nil
+	}
+}
+
+func (ds *DraftService) HandleEvent(event *types.Event, sendStateFunc func(*types.Lobby)) (bool, error) {
+	if ds.lobby.DraftState.Turn != event.User &&
+		ds.lobby.DraftState.Turn != types.TurnStart &&
+		ds.lobby.DraftState.Turn != types.TurnEnd {
 		return false, nil
+	}
+
+	if event.Type == types.Select {
+		ds.StopTimer()
 	}
 
 	switch event.Type {
 	case types.Start:
-		return ds.handleStartEvent(event)
+		return ds.handleStartEvent(event, sendStateFunc)
 	case types.Hover:
-		if ds.draftState.Phase == types.PhasePick {
+		if ds.lobby.DraftState.Phase == types.PhasePick {
 			return ds.handleHoverEvent(event)
 		}
 		return false, nil
 	case types.Select:
-		return ds.handleSelectEvent(event)
+		return ds.handleSelectEvent(event, sendStateFunc)
 	case types.Timeout:
 		// TODO
+		ds.lobby.DraftState.Timer = 30
+		sendStateFunc(ds.lobby)
 		return true, nil
 	case types.Message:
 		// Currently not implemented
@@ -47,26 +111,29 @@ func (ds *DraftService) HandleEvent(event *types.Event) (bool, error) {
 	}
 }
 
-func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
-	switch ds.draftState.Phase {
+func (ds *DraftService) handleStartEvent(event *types.Event, sendStateFunc func(*types.Lobby)) (bool, error) {
+	switch ds.lobby.DraftState.Phase {
 	case types.PhaseReady:
 		ds.handleWaitingConfirm(event, types.TurnStart, func() {
-			ds.draftState.Turn = types.TurnBlue
-			ds.draftState.Phase = types.PhaseBan
+			ds.lobby.DraftState.Turn = types.TurnBlue
+			ds.lobby.DraftState.Phase = types.PhaseBan
+			ds.lobby.DraftState.Timer = 30
+			sendStateFunc(ds.lobby)
+			ds.StartTimer(sendStateFunc)
 		})
 	case types.PhaseEnd:
 		if event.User == types.TurnBlue {
-			ds.draftState.Turn = types.TurnRed
+			ds.lobby.DraftState.Turn = types.TurnRed
 		} else if event.User == types.TurnRed {
-			ds.draftState.Turn = types.TurnBlue
+			ds.lobby.DraftState.Turn = types.TurnBlue
 		}
-		if ds.draftState.Game < 5 {
-			ds.draftState.Phase = types.PhaseRestart
+		if ds.lobby.DraftState.Game < 5 {
+			ds.lobby.DraftState.Phase = types.PhaseRestart
 		} else {
-			ds.draftState.Phase = types.PhaseOver
+			ds.lobby.DraftState.Phase = types.PhaseOver
 		}
 	case types.PhaseRestart:
-		if ds.draftState.Game < 5 {
+		if ds.lobby.DraftState.Game < 5 {
 			ds.handleRestart(event.Flag)
 		}
 	}
@@ -75,11 +142,11 @@ func (ds *DraftService) handleStartEvent(event *types.Event) (bool, error) {
 }
 
 func (ds *DraftService) handleWaitingConfirm(event *types.Event, turn types.DraftTurn, action func()) {
-	if ds.draftState.Turn == turn {
+	if ds.lobby.DraftState.Turn == turn {
 		if event.User == types.TurnBlue {
-			ds.draftState.Turn = types.TurnRed
+			ds.lobby.DraftState.Turn = types.TurnRed
 		} else if event.User == types.TurnRed {
-			ds.draftState.Turn = types.TurnBlue
+			ds.lobby.DraftState.Turn = types.TurnBlue
 		}
 	} else {
 		action()
@@ -87,18 +154,18 @@ func (ds *DraftService) handleWaitingConfirm(event *types.Event, turn types.Draf
 }
 
 func (ds *DraftService) handleRestart(switchSide bool) {
-	blueSide := ds.draftState.BlueTeam
-	redSide := ds.draftState.RedTeam
+	blueSide := ds.lobby.DraftState.BlueTeam
+	redSide := ds.lobby.DraftState.RedTeam
 
 	if switchSide {
 		blueSide, redSide = redSide, blueSide
 	}
 
-	if ds.draftState.Options.IsFearless {
+	if ds.lobby.DraftState.Options.IsFearless {
 		blueSide.PreviousPicks = append(blueSide.PreviousPicks, ds.extractPreviousPicks(blueSide.Picks)...)
 		redSide.PreviousPicks = append(redSide.PreviousPicks, ds.extractPreviousPicks(redSide.Picks)...)
 
-		if ds.draftState.Options.KeepBan {
+		if ds.lobby.DraftState.Options.KeepBan {
 			blueSide.PreviousBans = append(blueSide.PreviousBans, ds.extractPreviousBans(blueSide.Bans)...)
 			redSide.PreviousBans = append(redSide.PreviousBans, ds.extractPreviousBans(redSide.Bans)...)
 		}
@@ -111,11 +178,11 @@ func (ds *DraftService) handleRestart(switchSide bool) {
 	redSide.Bans = make([]*string, 5)
 
 	ds.turnCounter = 1
-	ds.draftState.Phase = types.PhaseReady
-	ds.draftState.Game++
-	ds.draftState.Turn = types.TurnStart
-	ds.draftState.BlueTeam = blueSide
-	ds.draftState.RedTeam = redSide
+	ds.lobby.DraftState.Phase = types.PhaseReady
+	ds.lobby.DraftState.Game++
+	ds.lobby.DraftState.Turn = types.TurnStart
+	ds.lobby.DraftState.BlueTeam = blueSide
+	ds.lobby.DraftState.RedTeam = redSide
 }
 
 func (ds *DraftService) extractPreviousPicks(picks []*types.DraftChampion) []string {
@@ -163,12 +230,12 @@ func (ds *DraftService) handleHoverEvent(event *types.Event) (bool, error) {
 	return true, nil
 }
 
-func (ds *DraftService) handleSelectEvent(event *types.Event) (bool, error) {
+func (ds *DraftService) handleSelectEvent(event *types.Event, sendStateFunc func(*types.Lobby)) (bool, error) {
 
 	teamKey := ds.determineTeamKey(event.User)
 	team := ds.getTeamState(teamKey)
 
-	isBanPhase := ds.draftState.Phase == types.PhaseBan
+	isBanPhase := ds.lobby.DraftState.Phase == types.PhaseBan
 
 	var updated bool
 	if isBanPhase {
@@ -191,6 +258,11 @@ func (ds *DraftService) handleSelectEvent(event *types.Event) (bool, error) {
 
 	ds.turnCounter++
 	ds.updatePhaseAndTurn()
+
+	ds.lobby.DraftState.Timer = 30
+	sendStateFunc(ds.lobby)
+	ds.StartTimer(sendStateFunc)
+
 	return true, nil
 }
 
@@ -203,9 +275,9 @@ func (ds *DraftService) determineTeamKey(turn types.DraftTurn) string {
 
 func (ds *DraftService) getTeamState(teamKey string) *types.TeamState {
 	if teamKey == "blueTeam" {
-		return &ds.draftState.BlueTeam
+		return &ds.lobby.DraftState.BlueTeam
 	}
-	return &ds.draftState.RedTeam
+	return &ds.lobby.DraftState.RedTeam
 }
 
 func (ds *DraftService) updateChampionArray(arr []*types.DraftChampion, value *types.DraftChampion) bool {
@@ -237,12 +309,12 @@ func (ds *DraftService) updateStringArray(arr []*string, value *string) bool {
 }
 
 func (ds *DraftService) updatePhaseAndTurn() {
-	if ds.draftState.Options.TournamentBan {
-		ds.draftState.Phase = ds.determinePhase(ds.turnCounter)
-		ds.draftState.Turn = ds.getTurn(ds.turnCounter)
+	if ds.lobby.DraftState.Options.TournamentBan {
+		ds.lobby.DraftState.Phase = ds.determinePhase(ds.turnCounter)
+		ds.lobby.DraftState.Turn = ds.getTurn(ds.turnCounter)
 	} else {
-		ds.draftState.Phase = ds.determineStandardPhase(ds.turnCounter)
-		ds.draftState.Turn = ds.getStandardTurn(ds.turnCounter)
+		ds.lobby.DraftState.Phase = ds.determineStandardPhase(ds.turnCounter)
+		ds.lobby.DraftState.Turn = ds.getStandardTurn(ds.turnCounter)
 	}
 }
 
@@ -320,8 +392,4 @@ func (ds *DraftService) getTurn(turnCounter int) types.DraftTurn {
 	default:
 		panic("Invalid turn counter")
 	}
-}
-
-func (ds *DraftService) Disconnect() {
-	ds.turnCounter = 0
 }

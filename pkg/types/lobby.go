@@ -70,6 +70,7 @@ type DraftOptions struct {
 
 type DraftState struct {
 	HasTimer bool         `json:"hasTimer"`
+	Timer    int          `json:"timer"`
 	Phase    DraftPhase   `json:"phase"`
 	Turn     DraftTurn    `json:"turn"`
 	Game     int          `json:"game"`
@@ -147,6 +148,7 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lo
 		Spectators: make(map[string]*User),
 		DraftState: DraftState{
 			HasTimer: true,
+			Timer:    30,
 			Phase:    PhaseReady,
 			Turn:     TurnStart,
 			Game:     1,

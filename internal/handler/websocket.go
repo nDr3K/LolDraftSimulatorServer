@@ -114,10 +114,10 @@ func (h *LobbyHandler) processMessage(lobby *types.Lobby, User *types.User, mess
 	}
 
 	if lobby.DraftService == nil {
-		lobby.DraftService = service.NewDraftService(&lobby.DraftState)
+		lobby.DraftService = service.NewDraftService(lobby)
 	}
 
-	success, err := lobby.DraftService.HandleEvent(&event)
+	success, err := lobby.DraftService.HandleEvent(&event, h.sendDraftState)
 	if err != nil {
 		log.Printf("Error processing draft event: %v", err)
 	}
