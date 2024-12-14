@@ -70,15 +70,16 @@ type DraftOptions struct {
 }
 
 type DraftState struct {
-	HasTimer bool         `json:"hasTimer"`
-	Timer    int          `json:"timer"`
-	Phase    DraftPhase   `json:"phase"`
-	Turn     DraftTurn    `json:"turn"`
-	Game     int          `json:"game"`
-	Chat     []string     `json:"chat"`
-	BlueTeam TeamState    `json:"blueTeam"`
-	RedTeam  TeamState    `json:"redTeam"`
-	Options  DraftOptions `json:"options"`
+	HasTimer            bool         `json:"hasTimer"`
+	Timer               int          `json:"timer"`
+	Phase               DraftPhase   `json:"phase"`
+	Turn                DraftTurn    `json:"turn"`
+	Game                int          `json:"game"`
+	Chat                []string     `json:"chat"`
+	BlueTeam            TeamState    `json:"blueTeam"`
+	RedTeam             TeamState    `json:"redTeam"`
+	Options             DraftOptions `json:"options"`
+	DisabledChampionIds []*string    `json:"disabledChampionIds"`
 }
 
 type LobbyRole string
@@ -141,7 +142,7 @@ type Lobby struct {
 	Champions    []*DraftChampion
 }
 
-func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, champions []*DraftChampion) *Lobby {
+func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, champions []*DraftChampion, disabledChampionIds []*string) *Lobby {
 	var timer int
 	if options.HasTimer {
 		timer = 30
@@ -175,7 +176,8 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, cha
 				PreviousPicks: []string{},
 				PreviousBans:  []string{},
 			},
-			Options: options,
+			Options:             options,
+			DisabledChampionIds: disabledChampionIds,
 		},
 		Champions: champions,
 	}

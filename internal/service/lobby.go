@@ -25,11 +25,17 @@ func NewLobbyService() *LobbyService {
 	}
 }
 
-func (s *LobbyService) CreateLobby(options *types.DraftOptions, blueTeamName string, redTeamName string, champions []*types.DraftChampion) *LobbyCreateResponse {
+func (s *LobbyService) CreateLobby(
+	options *types.DraftOptions,
+	blueTeamName string,
+	redTeamName string,
+	champions []*types.DraftChampion,
+	disabledChampionIds []*string,
+) *LobbyCreateResponse {
 	s.lobbiesMutex.Lock()
 	defer s.lobbiesMutex.Unlock()
 
-	lobby := types.NewLobby(*options, blueTeamName, redTeamName, champions)
+	lobby := types.NewLobby(*options, blueTeamName, redTeamName, champions, disabledChampionIds)
 
 	s.lobbies[lobby.ID] = lobby
 
