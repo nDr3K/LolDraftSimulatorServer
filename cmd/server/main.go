@@ -44,9 +44,10 @@ func handleLobby(mux *http.ServeMux) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		var lobbyRequest struct {
-			BlueTeamName string              `json:"blueTeamName"`
-			RedTeamName  string              `json:"redTeamName"`
-			Options      *types.DraftOptions `json:"options"`
+			BlueTeamName string                 `json:"blueTeamName"`
+			RedTeamName  string                 `json:"redTeamName"`
+			Options      *types.DraftOptions    `json:"options"`
+			Champions    []*types.DraftChampion `json:"champions"`
 		}
 
 		err := json.NewDecoder(r.Body).Decode(&lobbyRequest)
@@ -59,6 +60,7 @@ func handleLobby(mux *http.ServeMux) {
 			lobbyRequest.Options,
 			lobbyRequest.BlueTeamName,
 			lobbyRequest.RedTeamName,
+			lobbyRequest.Champions,
 		)
 
 		json.NewEncoder(w).Encode(lobbyResponse)

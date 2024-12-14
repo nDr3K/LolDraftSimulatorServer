@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -48,14 +49,14 @@ func (ds *DraftService) StartTimer(sendStateFunc func(*types.Lobby)) {
 			select {
 			case <-ticker.C:
 				ds.timerMutex.Lock()
-				if ds.lobby.DraftState.Timer > 0 {
+				if ds.lobby.DraftState.Timer >= -2 {
 					ds.lobby.DraftState.Timer--
 					sendStateFunc(ds.lobby)
 				}
 
-				// Stop timer if it reaches 0
-				if ds.lobby.DraftState.Timer <= 0 {
+				if ds.lobby.DraftState.Timer < -2 {
 					ds.timerMutex.Unlock()
+					ds.handleTimeout(sendStateFunc)
 					return
 				}
 				ds.timerMutex.Unlock()
@@ -65,6 +66,72 @@ func (ds *DraftService) StartTimer(sendStateFunc func(*types.Lobby)) {
 			}
 		}
 	}()
+}
+
+func (ds *DraftService) handleTimeout(sendStateFunc func(*types.Lobby)) {
+	teamKey := ds.determineTeamKey(ds.lobby.DraftState.Turn)
+	team := ds.getTeamState(teamKey)
+	isBanPhase := ds.lobby.DraftState.Phase == types.PhaseBan
+
+	if isBanPhase {
+		randomChampionID := "none"
+		ds.updateStringArray(team.Bans, &randomChampionID)
+	} else {
+		champion := ds.isAnyChampionInHoverState(team)
+		if champion == nil {
+			champion = ds.getRandomChampions()
+			ds.updateChampionArray(team.Picks, champion)
+		} else {
+			champion.Status = types.ChampStatusSelected
+			ds.setChampionStatusToDisabled(champion.ID)
+		}
+	}
+
+	ds.turnCounter++
+	ds.updatePhaseAndTurn()
+
+	ds.lobby.DraftState.Timer = 30
+	sendStateFunc(ds.lobby)
+	ds.StartTimer(sendStateFunc)
+}
+
+func (ds *DraftService) isAnyChampionInHoverState(teamState *types.TeamState) *types.DraftChampion {
+	for _, pick := range teamState.Picks {
+		if pick != nil && pick.Status == types.ChampStatusHover {
+			return pick
+		}
+	}
+	return nil
+}
+
+func (ds *DraftService) getRandomChampions() *types.DraftChampion {
+	availableChampions := []*types.DraftChampion{}
+
+	for _, champion := range ds.lobby.Champions {
+		if champion.Status != types.ChampStatusDisabled {
+			availableChampions = append(availableChampions, champion)
+		}
+	}
+
+	if len(availableChampions) == 0 {
+		log.Println("No available champions to select")
+		return nil
+	}
+
+	source := rand.NewSource(time.Now().UnixNano())
+	rng := rand.New(source)
+	randomChampion := availableChampions[rng.Intn(len(availableChampions))]
+
+	selectedChampion := &types.DraftChampion{
+		ID:     randomChampion.ID,
+		Name:   randomChampion.Name,
+		Roles:  randomChampion.Roles,
+		Status: types.ChampStatusSelected,
+	}
+
+	randomChampion.Status = types.ChampStatusDisabled
+
+	return selectedChampion
 }
 
 func (ds *DraftService) StopTimer() {
@@ -256,6 +323,8 @@ func (ds *DraftService) handleSelectEvent(event *types.Event, sendStateFunc func
 		return true, nil
 	}
 
+	ds.setChampionStatusToDisabled(event.Payload.ID)
+
 	ds.turnCounter++
 	ds.updatePhaseAndTurn()
 
@@ -264,6 +333,15 @@ func (ds *DraftService) handleSelectEvent(event *types.Event, sendStateFunc func
 	ds.StartTimer(sendStateFunc)
 
 	return true, nil
+}
+
+func (ds *DraftService) setChampionStatusToDisabled(championID string) {
+	for _, champion := range ds.lobby.Champions {
+		if champion.ID == championID {
+			champion.Status = types.ChampStatusDisabled
+			break
+		}
+	}
 }
 
 func (ds *DraftService) determineTeamKey(turn types.DraftTurn) string {

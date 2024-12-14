@@ -137,9 +137,10 @@ type Lobby struct {
 	Mutex        sync.RWMutex
 	DraftState   DraftState
 	DraftService DraftServiceInterface
+	Champions    []*DraftChampion
 }
 
-func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lobby {
+func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, champions []*DraftChampion) *Lobby {
 	return &Lobby{
 		ID:         uuid.New().String(),
 		Users:      make(map[string]*User),
@@ -169,6 +170,7 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string) *Lo
 			},
 			Options: options,
 		},
+		Champions: champions,
 	}
 }
 
