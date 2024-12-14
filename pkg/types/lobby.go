@@ -66,6 +66,7 @@ type DraftOptions struct {
 	BanPick       bool `json:"banPick"`
 	KeepBan       bool `json:"keepBan"`
 	TournamentBan bool `json:"tournamentBan"`
+	HasTimer      bool `json:"hasTimer"`
 }
 
 type DraftState struct {
@@ -141,6 +142,12 @@ type Lobby struct {
 }
 
 func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, champions []*DraftChampion) *Lobby {
+	var timer int
+	if options.HasTimer {
+		timer = 30
+	} else {
+		timer = 0
+	}
 	return &Lobby{
 		ID:         uuid.New().String(),
 		Users:      make(map[string]*User),
@@ -148,8 +155,8 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, cha
 		RedTeam:    make(map[string]*User),
 		Spectators: make(map[string]*User),
 		DraftState: DraftState{
-			HasTimer: true,
-			Timer:    30,
+			HasTimer: options.HasTimer,
+			Timer:    timer,
 			Phase:    PhaseReady,
 			Turn:     TurnStart,
 			Game:     1,

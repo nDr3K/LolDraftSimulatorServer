@@ -27,15 +27,15 @@ func NewDraftService(lobby *types.Lobby) *DraftService {
 }
 
 func (ds *DraftService) StartTimer(sendStateFunc func(*types.Lobby)) {
+	if !ds.lobby.DraftState.HasTimer || ds.lobby.DraftState.Timer <= -2 {
+		return
+	}
+
 	ds.timerMutex.Lock()
 	defer ds.timerMutex.Unlock()
 
 	if ds.timerStopper != nil {
 		close(ds.timerStopper)
-	}
-
-	if !ds.lobby.DraftState.HasTimer || ds.lobby.DraftState.Timer <= 0 {
-		return
 	}
 
 	ds.timerStopper = make(chan struct{})
