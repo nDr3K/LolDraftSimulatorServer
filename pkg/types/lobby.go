@@ -2,6 +2,7 @@ package types
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -131,15 +132,16 @@ type User struct {
 }
 
 type Lobby struct {
-	ID           string
-	Users        map[string]*User
-	BlueTeam     map[string]*User
-	RedTeam      map[string]*User
-	Spectators   map[string]*User
-	Mutex        sync.RWMutex
-	DraftState   DraftState
-	DraftService DraftServiceInterface
-	Champions    []*DraftChampion
+	ID               string
+	Users            map[string]*User
+	BlueTeam         map[string]*User
+	RedTeam          map[string]*User
+	Spectators       map[string]*User
+	Mutex            sync.RWMutex
+	DraftState       DraftState
+	DraftService     DraftServiceInterface
+	Champions        []*DraftChampion
+	LastActivityTime time.Time
 }
 
 func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, champions []*DraftChampion, disabledChampionIds []*string) *Lobby {
@@ -179,42 +181,44 @@ func NewLobby(options DraftOptions, blueTeamName string, redTeamName string, cha
 			Options:             options,
 			DisabledChampionIds: disabledChampionIds,
 		},
-		Champions: champions,
+		Champions:        champions,
+		LastActivityTime: time.Now(),
 	}
 }
 
-func (l *Lobby) AddUser(User *User) {
+func (l *Lobby) AddUser(user *User) {
 	l.Mutex.Lock()
 	defer l.Mutex.Unlock()
 
-	l.Users[User.ID] = User
-	switch User.Role {
+	l.Users[user.ID] = user
+	l.LastActivityTime = time.Now()
+
+	switch user.Role {
 	case RoleBlueTeam:
-		l.BlueTeam[User.ID] = User
+		l.BlueTeam[user.ID] = user
 	case RoleRedTeam:
-		l.RedTeam[User.ID] = User
+		l.RedTeam[user.ID] = user
 	case RoleSpectator:
-		l.Spectators[User.ID] = User
+		l.Spectators[user.ID] = user
 	}
 }
 
-func (l *Lobby) RemoveUser(UserID string) {
+func (l *Lobby) RemoveUser(userID string) {
 	l.Mutex.Lock()
 	defer l.Mutex.Unlock()
 
-	User, exists := l.Users[UserID]
-	if !exists {
-		return
-	}
+	if user, exists := l.Users[userID]; exists {
+		delete(l.Users, userID)
+		l.LastActivityTime = time.Now()
 
-	delete(l.Users, UserID)
-	switch User.Role {
-	case RoleBlueTeam:
-		delete(l.BlueTeam, UserID)
-	case RoleRedTeam:
-		delete(l.RedTeam, UserID)
-	case RoleSpectator:
-		delete(l.Spectators, UserID)
+		switch user.Role {
+		case RoleBlueTeam:
+			delete(l.BlueTeam, userID)
+		case RoleRedTeam:
+			delete(l.RedTeam, userID)
+		case RoleSpectator:
+			delete(l.Spectators, userID)
+		}
 	}
 }
 

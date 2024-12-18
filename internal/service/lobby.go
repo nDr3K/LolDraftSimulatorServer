@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"fearlessdraft-server/pkg/types"
 )
@@ -10,6 +11,7 @@ import (
 type LobbyService struct {
 	lobbies      map[string]*types.Lobby
 	lobbiesMutex sync.RWMutex
+	lobbyTimeout time.Duration
 }
 
 type LobbyCreateResponse struct {
@@ -20,9 +22,39 @@ type LobbyCreateResponse struct {
 }
 
 func NewLobbyService() *LobbyService {
-	return &LobbyService{
-		lobbies: make(map[string]*types.Lobby),
+	service := &LobbyService{
+		lobbies:      make(map[string]*types.Lobby),
+		lobbyTimeout: 5 * time.Minute,
 	}
+	go service.cleanupLobbies()
+	return service
+}
+
+func (s *LobbyService) cleanupLobbies() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.lobbiesMutex.Lock()
+		for lobbyID, lobby := range s.lobbies {
+			if s.isLobbyInactive(lobby) {
+				delete(s.lobbies, lobbyID)
+				fmt.Printf("Removed inactive lobby: %s\n", lobbyID)
+			}
+		}
+		s.lobbiesMutex.Unlock()
+	}
+}
+
+func (s *LobbyService) isLobbyInactive(lobby *types.Lobby) bool {
+	lobby.Mutex.RLock()
+	defer lobby.Mutex.RUnlock()
+
+	if len(lobby.Users) == 0 {
+		return true
+	}
+
+	return false
 }
 
 func (s *LobbyService) CreateLobby(
