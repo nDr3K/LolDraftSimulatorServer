@@ -50,11 +50,7 @@ func (s *LobbyService) isLobbyInactive(lobby *types.Lobby) bool {
 	lobby.Mutex.RLock()
 	defer lobby.Mutex.RUnlock()
 
-	if len(lobby.Users) == 0 {
-		return true
-	}
-
-	return false
+	return len(lobby.Users) == 0
 }
 
 func (s *LobbyService) CreateLobby(
