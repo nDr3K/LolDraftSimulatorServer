@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  fearlessdraft-app:
+  fearlessdraft-server:
     image: ndrek/fearlessdraft-server:${IMAGE_TAG}
     deploy:
       replicas: 2
